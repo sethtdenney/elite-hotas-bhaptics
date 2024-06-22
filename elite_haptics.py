@@ -10,7 +10,7 @@ import re
 from threading import Thread
 
 # Set to True to print debug logs and False otherwise
-debug = True
+debug = False
 
 hotkey_listeners = []
 num_fire_groups = 0
@@ -18,7 +18,31 @@ current_fire_group_idx = 0
 primary_fire_pattern_specs = []
 secondary_fire_pattern_specs = []
 
-def play(pattern_name, hotkey=None, charge_duration_millis=None, repeat_intervial_millis=None):
+def get_current_graduated_intensity(num_repeats, num_repeats_to_increase_intensity):
+    tier = int(num_repeats / num_repeats_to_increase_intensity) + 1
+    if keyboard.is_pressed('9'):
+        max_tier = 10
+    elif keyboard.is_pressed('8'):
+        max_tier = 9
+    elif keyboard.is_pressed('7'):
+        max_tier = 8
+    elif keyboard.is_pressed('6'):
+        max_tier = 7
+    elif keyboard.is_pressed('5'):
+        max_tier = 6
+    elif keyboard.is_pressed('4'):
+        max_tier = 5
+    elif keyboard.is_pressed('3'):
+        max_tier = 4
+    elif keyboard.is_pressed('2'):
+        max_tier = 3
+    elif keyboard.is_pressed('1'):
+        max_tier = 2
+    else:
+        max_tier = 1
+    return 0.1 * min(tier, max_tier)
+
+def play(pattern_name, hotkey=None, charge_duration_millis=None, repeat_intervial_millis=None, num_repeats_to_increase_intensity=None):
     print(f'Preparing {pattern_name} in response to hotkey {hotkey}')
     
     # If a charge time is configured, only proceed if the hotkey is held for the full charge duration.
@@ -35,20 +59,29 @@ def play(pattern_name, hotkey=None, charge_duration_millis=None, repeat_intervia
         print('Executing', pattern_name)
         player.submit_registered(pattern_name)
     else:
+        print('Executing with repeat', pattern_name)
         if debug: print(f'Entering hold loop while hotkey \'{hotkey}\' is held down...')
+        num_repeats = 0
         while keyboard.is_pressed(hotkey):
             if debug: print(f'Repeating pattern for hotkey \'{hotkey}\'')
-            player.submit_registered(pattern_name)
+            if num_repeats_to_increase_intensity is None:
+                intensity = 1
+            else: intensity = get_current_graduated_intensity(num_repeats, num_repeats_to_increase_intensity)
+            player.submit_registered_with_option(pattern_name, "alt", # No clue what this parameter 'altKey' actually does...
+                                             scale_option={"intensity": intensity, "duration": 1},
+                                             rotation_option={"offsetAngleX": 0, "offsetY": 0})
+            if debug: print(f'Playing with intensity of {intensity}')
             sleep(repeat_intervial_millis / 1000.0)
+            num_repeats += 1
     if debug: print(f'Finished playing pattern for hotkey \'{hotkey}\'')
 
 def play_primary_fire(hotkey):
-    pattern_name, charge_millis, repeat_millis = primary_fire_pattern_specs[current_fire_group_idx]
-    play(pattern_name, hotkey, charge_millis, repeat_millis)
+    pattern_name, charge_millis, repeat_millis, repeats_to_graduate = primary_fire_pattern_specs[current_fire_group_idx]
+    play(pattern_name, hotkey, charge_millis, repeat_millis, repeats_to_graduate)
 
 def play_secondary_fire(hotkey):
-    pattern_name, charge_millis, repeat_millis = secondary_fire_pattern_specs[current_fire_group_idx]
-    play(pattern_name, hotkey, charge_millis, repeat_millis)
+    pattern_name, charge_millis, repeat_millis, repeats_to_graduate = secondary_fire_pattern_specs[current_fire_group_idx]
+    play(pattern_name, hotkey, charge_millis, repeat_millis, repeats_to_graduate)
 
 def update_fire_group(delta):
     global current_fire_group_idx
@@ -120,6 +153,7 @@ def run():
     
     print("Press ctrl+z+enter to quit")
     keyboard.wait('ctrl+z+enter')
+    print("Stopping listeners...")
     
     # Stop hotkey listeners
     for listener in hotkey_listeners:
@@ -148,15 +182,15 @@ if __name__ == "__main__":
     
     # Configure preset flight patterns
     pattern_specs_for_hotkeys = {
-    keys_for_actions['Pitch Up']: ('Wave Down Inc', None, 1000),
-    #keys_for_actions['Thrust Up']: ('Wave Down Inc', None, 1000),
-    keys_for_actions['Pitch Down']: ('Wave Up Inc', None, 1000),
-    #keys_for_actions['Thrust Down']: ('Wave Up Inc', None, 1000),
-    keys_for_actions['Roll Right']: ('Wave Left Inc', None, 1000),
-    #keys_for_actions['Thrust Right']: ('Wave Left Inc', None, 1000),
-    keys_for_actions['Roll Left']: ('Wave Right Inc', None, 1000),
-    #keys_for_actions['Thrust Left']: ('Wave Right Inc', None, 1000),
-    keys_for_actions['Boost']: ('Boost', None, None)
+    keys_for_actions['Pitch Up']: ('Wave Down Inc', None, 1000, 2),
+    #keys_for_actions['Thrust Up']: ('Wave Down Inc', None, 1000, 2),
+    keys_for_actions['Pitch Down']: ('Wave Up Inc', None, 1000, 2),
+    #keys_for_actions['Thrust Down']: ('Wave Up Inc', None, 1000, 2),
+    keys_for_actions['Roll Right']: ('Wave Left Inc', None, 1000, 2),
+    #keys_for_actions['Thrust Right']: ('Wave Left Inc', None, 1000, 2),
+    keys_for_actions['Roll Left']: ('Wave Right Inc', None, 1000, 2),
+    #keys_for_actions['Thrust Left']: ('Wave Right Inc', None, 1000, 2),
+    keys_for_actions['Boost']: ('Boost', None, None, None)
     }
     
     # Load available patterns
@@ -168,26 +202,26 @@ if __name__ == "__main__":
     
     # Register hotkey listeners for flight patterns
     for hotkey in pattern_specs_for_hotkeys:
-        pattern_name, charge_millis, repeat_millis = pattern_specs_for_hotkeys[hotkey]
+        pattern_name, charge_millis, repeat_millis, repeats_to_graduate = pattern_specs_for_hotkeys[hotkey]
         if pattern_name not in pattern_names:
             raise Exception(f'Pattern {pattern_name} not found in local {patterns_path} directory!')
         print(f'Adding hotkey pattern spec: {hotkey} -> {pattern_name} after {charge_millis}ms every {repeat_millis}ms')
-        add_new_hotkey_listener(hotkey, lambda n=pattern_name, h=hotkey, c=charge_millis, r=repeat_millis : play(n, h, c, r))
+        add_new_hotkey_listener(hotkey, lambda n=pattern_name, h=hotkey, c=charge_millis, r=repeat_millis, g=repeats_to_graduate : play(n, h, c, r, g))
     
     # Configure set weapon patterns
-    pattern_specs_for_weapons = {'N/A': (None, None, None),
-    'Huge Multi': ('Short Fade Out 30ms Delay VestArms', None, 300),
-    'Large Multi': ('Continuous Vest20Arms10', None, 500),
-    'Medium Multi': ('Arms Continuous 10', None, 500),
-    'Huge Cannon': ('Reverberating Short Fade Out 30ms Delay VestArms', None, None),
-    'Large Cannon': ('Short Fade Out 30ms Delay VestArms', None, None),
-    'Medium Cannon': ('Short Fade Out 30ms Delay Arms', None, None),
-    'Huge PA': ('Reverberating Short Fade Out 30ms Delay VestArms', None, None),
-    'Large PA': ('Short Fade Out 30ms Delay VestArms', None, None),
-    'Medium PA': ('Short Fade Out 30ms Delay Arms', None, None),
-    'Medium Rails': ('Reverberating Short Fade Out 30ms Delay VestArms', 600, None),
-    'Small Rails': ('Short Fade Out 30ms Delay Arms', 400, None),
-    'Imperial Hammer': ('Reverberating Burst3 20ms Delay VestArms', 600, None)}
+    pattern_specs_for_weapons = {'N/A': (None, None, None, None),
+    'Huge Multi': ('Short Fade Out 30ms Delay VestArms', None, 300, None),
+    'Large Multi': ('Continuous Vest20Arms10', None, 500, None),
+    'Medium Multi': ('Arms Continuous 10', None, 500, None),
+    'Huge Cannon': ('Reverberating Short Fade Out 30ms Delay VestArms', None, None, None),
+    'Large Cannon': ('Short Fade Out 30ms Delay VestArms', None, None, None),
+    'Medium Cannon': ('Short Fade Out 30ms Delay Arms', None, None, None),
+    'Huge PA': ('Reverberating Short Fade Out 30ms Delay VestArms', None, None, None),
+    'Large PA': ('Short Fade Out 30ms Delay VestArms', None, None, None),
+    'Medium PA': ('Short Fade Out 30ms Delay Arms', None, None, None),
+    'Medium Rails': ('Reverberating Short Fade Out 30ms Delay VestArms', 600, None, None),
+    'Small Rails': ('Short Fade Out 30ms Delay Arms', 400, None, None),
+    'Imperial Hammer': ('Reverberating Burst3 20ms Delay VestArms', 600, None, None)}
     
     # Configure num fire groups
     while num_fire_groups < 1:
@@ -225,7 +259,7 @@ if __name__ == "__main__":
         primary_fire_pattern_specs.append(pattern_specs_for_weapons[primary_weapon])
         if primary_weapon != 'N/A':
             hotkey = keys_for_actions['Primary Fire']
-            pattern_name, charge_millis, repeat_millis = pattern_specs_for_weapons[primary_weapon]
+            pattern_name, charge_millis, repeat_millis, repeats_to_graduate = pattern_specs_for_weapons[primary_weapon]
             if pattern_name not in pattern_names:
                 raise Exception(f'Pattern {pattern_name} not found in local {patterns_path} directory!')
             print(f'Adding hotkey pattern spec: {hotkey} -> {pattern_name} after {charge_millis}ms every {repeat_millis}ms while in Fire Group {fire_group_idx+1}/{num_fire_groups}')
@@ -245,7 +279,7 @@ if __name__ == "__main__":
         secondary_fire_pattern_specs.append(pattern_specs_for_weapons[secondary_weapon])
         if secondary_weapon != 'N/A':
             hotkey = keys_for_actions['Secondary Fire']
-            pattern_name, charge_millis, repeat_millis = pattern_specs_for_weapons[secondary_weapon]
+            pattern_name, charge_millis, repeat_millis, repeats_to_graduate = pattern_specs_for_weapons[secondary_weapon]
             if pattern_name not in pattern_names:
                 raise Exception(f'Pattern {pattern_name} not found in local {patterns_path} directory!')
             print(f'Adding hotkey pattern spec: {hotkey} -> {pattern_name} after {charge_millis}ms every {repeat_millis}ms while in Fire Group {fire_group_idx+1}/{num_fire_groups}')
