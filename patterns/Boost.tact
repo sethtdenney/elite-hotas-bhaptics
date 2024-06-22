@@ -22,7 +22,7 @@
 					{
 						"name": "Effect 1",
 						"offsetTime": 1515,
-						"startTime": 151,
+						"startTime": 300,
 						"modes": {
 							"VestBack": {
 								"dotMode": {

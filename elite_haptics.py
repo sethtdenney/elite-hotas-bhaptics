@@ -219,9 +219,9 @@ if __name__ == "__main__":
     'Huge PA': ('Reverberating Short Fade Out 30ms Delay VestArms', None, None, None),
     'Large PA': ('Short Fade Out 30ms Delay VestArms', None, None, None),
     'Medium PA': ('Short Fade Out 30ms Delay Arms', None, None, None),
-    'Medium Rails': ('Reverberating Short Fade Out 30ms Delay VestArms', 600, None, None),
-    'Small Rails': ('Short Fade Out 30ms Delay Arms', 400, None, None),
-    'Imperial Hammer': ('Reverberating Burst3 20ms Delay VestArms', 600, None, None)}
+    'Medium Rails': ('Reverberating Short Fade Out 30ms Delay VestArms', 1000, None, None),
+    'Small Rails': ('Short Fade Out 30ms Delay Arms', 850, None, None),
+    'Imperial Hammer': ('Reverberating Burst3 20ms Delay VestArms', 1000, None, None)}
     
     # Configure num fire groups
     while num_fire_groups < 1:
