@@ -512,11 +512,11 @@
                             <response-curve>
                                 <mapping type="cubic-bezier-spline">
                                     <control-point x="-1.0" y="-1.0"/>
-                                    <control-point x="-0.74" y="0.004"/>
-                                    <control-point x="0.74" y="-0.004"/>
+                                    <control-point x="-0.752" y="0.004"/>
+                                    <control-point x="0.752" y="0.004"/>
                                     <control-point x="1.0" y="1.0"/>
                                 </mapping>
-                                <deadzone center-high="0.0" center-low="0.0" high="0.03" low="-1.0"/>
+                                <deadzone center-high="0.0" center-low="0.0" high="1.0" low="-1.0"/>
                                 <activation-condition rule="all"/>
                             </response-curve>
                             <remap axis="7" axis-scaling="0.0" axis-type="absolute" vjoy="1">
@@ -697,7 +697,7 @@
                                     <control-point x="0.744" y="0.004"/>
                                     <control-point x="1.0" y="1.0"/>
                                 </mapping>
-                                <deadzone center-high="0.0" center-low="-0.05" high="1.0" low="-1.0"/>
+                                <deadzone center-high="0.05" center-low="-0.05" high="1.0" low="-1.0"/>
                             </response-curve>
                             <remap axis="2" axis-scaling="1.0" axis-type="absolute" vjoy="1"/>
                         </action-set>
