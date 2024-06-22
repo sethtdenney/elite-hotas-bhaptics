@@ -1,14 +1,7 @@
-'''
-TODO:
-    * Figure out how to initiate multiple keyboard handlers asynchronously (while another is held down)
-    * Make the G-force patterns only kick in after an input is held for a bit and gradually increase in strength from softer
-    * Make the rails delay longer
-'''
-
 from time import sleep
 from bhaptics import better_haptic_player as player
-from bhaptics.better_haptic_player import BhapticsPosition
 import keyboard
+from pynput import keyboard as pynputkeyboard
 import os
 from os import listdir
 from os.path import isfile, join
@@ -16,13 +9,17 @@ from tail import Tail
 import re
 from threading import Thread
 
+# Set to True to print debug logs and False otherwise
+debug = False
+
+hotkey_listeners = []
 num_fire_groups = 0
 current_fire_group_idx = 0
 primary_fire_pattern_specs = []
 secondary_fire_pattern_specs = []
 
 def play(pattern_name, hotkey=None, charge_duration_millis=None, repeat_intervial_millis=None):
-    print('Preparing', pattern_name)
+    print(f'Preparing {pattern_name} in response to hotkey {hotkey}')
     
     # If a charge time is configured, only proceed if the hotkey is held for the full charge duration.
     if charge_duration_millis:
@@ -30,6 +27,7 @@ def play(pattern_name, hotkey=None, charge_duration_millis=None, repeat_intervia
         for t in range(int(charge_duration_millis / 50)):
             sleep(0.05)
             if not keyboard.is_pressed(hotkey):
+                if debug: print(f'Did not pass charge check for hotkey \'{hotkey}\'. Aborting...')
                 return
         if charged:
             print('Executing', pattern_name)
@@ -41,8 +39,10 @@ def play(pattern_name, hotkey=None, charge_duration_millis=None, repeat_intervia
         player.submit_registered(pattern_name)
     else:
         while keyboard.is_pressed(hotkey):
+            if debug: print(f'Repeating pattern for hotkey \'{hotkey}\'')
             player.submit_registered(pattern_name)
             sleep(repeat_intervial_millis / 1000.0)
+    if debug: print(f'Finished playing pattern for hotkey \'{hotkey}\'')
 
 def play_primary_fire(hotkey):
     #print('A) ', primary_fire_pattern_specs) #debug
@@ -104,18 +104,37 @@ def run_log_listener_daemon():
     daemon.setDaemon(True)
     daemon.start()
 
+def add_new_hotkey_listener(hotkey, callback):
+    global hotkey_listeners
+    hotkey_state = pynputkeyboard.HotKey(
+        pynputkeyboard.HotKey.parse(hotkey),
+        callback)
+    listener = pynputkeyboard.Listener(
+        on_press=hotkey_state.press,
+        on_release=hotkey_state.release)
+    hotkey_listeners.append(listener)
+
 def run():
+    # Run log listener daemon
+    run_log_listener_daemon()
+    
+    # Run hotkey listeners
+    for listener in hotkey_listeners:
+        listener.start()
+    
     print("Press ctrl+z+enter to quit")
     keyboard.wait('ctrl+z+enter')
+    
+    # Stop hotkey listeners
+    for listener in hotkey_listeners:
+        listener.stop()
+    
     os._exit(0)
 
 if __name__ == "__main__":
     player.initialize()
     #print('C) ', primary_fire_pattern_specs) #debug
     #print(f'C) current_fire_group_idx: {current_fire_group_idx}') #debug
-    
-    # Configure log listener
-    run_log_listener_daemon()
     
     # Configure preset flight bindings as defined in Joystick Gremlin
     # Joystick inputs should leverage Map to Keyboard actions with a Virtual Button condition for [0.95,1.0] and [-1.0,-0.95] ranges respectively.
@@ -134,17 +153,16 @@ if __name__ == "__main__":
     'Next Fire Group':'*+l',
     'Previous Fire Group':'*+m'}
     
-    
     # Configure preset flight patterns
     pattern_specs_for_hotkeys = {
     keys_for_actions['Pitch Up']: ('Wave Down Inc', None, 1000),
-    keys_for_actions['Thrust Up']: ('Wave Down Inc', None, 1000),
+    #keys_for_actions['Thrust Up']: ('Wave Down Inc', None, 1000),
     keys_for_actions['Pitch Down']: ('Wave Up Inc', None, 1000),
-    keys_for_actions['Thrust Down']: ('Wave Up Inc', None, 1000),
+    #keys_for_actions['Thrust Down']: ('Wave Up Inc', None, 1000),
     keys_for_actions['Roll Right']: ('Wave Left Inc', None, 1000),
-    keys_for_actions['Thrust Right']: ('Wave Left Inc', None, 1000),
+    #keys_for_actions['Thrust Right']: ('Wave Left Inc', None, 1000),
     keys_for_actions['Roll Left']: ('Wave Right Inc', None, 1000),
-    keys_for_actions['Thrust Left']: ('Wave Right Inc', None, 1000),
+    #keys_for_actions['Thrust Left']: ('Wave Right Inc', None, 1000),
     keys_for_actions['Boost']: ('Boost', None, None)
     }
     
@@ -161,7 +179,7 @@ if __name__ == "__main__":
         if pattern_name not in pattern_names:
             raise Exception(f'Pattern {pattern_name} not found in local {patterns_path} directory!')
         print(f'Adding hotkey pattern spec: {hotkey} -> {pattern_name} after {charge_millis}ms for {repeat_millis}ms')
-        keyboard.add_hotkey(hotkey, lambda n=pattern_name, h=hotkey, c=charge_millis, r=repeat_millis : play(n, h, c, r))
+        add_new_hotkey_listener(hotkey, lambda n=pattern_name, h=hotkey, c=charge_millis, r=repeat_millis : play(n, h, c, r))
     
     # Configure set weapon patterns
     pattern_specs_for_weapons = {'N/A': (None, None, None),
@@ -206,8 +224,7 @@ if __name__ == "__main__":
             if pattern_name not in pattern_names:
                 raise Exception(f'Pattern {pattern_name} not found in local {patterns_path} directory!')
             print(f'Adding hotkey pattern spec: {hotkey} -> {pattern_name} after {charge_millis}ms for {repeat_millis}ms while in Fire Group {fire_group_idx+1}/{num_fire_groups}')
-            keyboard.add_hotkey(hotkey, lambda h=hotkey : play_primary_fire(h))
-            
+            add_new_hotkey_listener(hotkey, lambda h=hotkey : play_primary_fire(h))
         
         # Secondary Fire
         secondary_weapon = None
@@ -220,13 +237,13 @@ if __name__ == "__main__":
             if pattern_name not in pattern_names:
                 raise Exception(f'Pattern {pattern_name} not found in local {patterns_path} directory!')
             print(f'Adding hotkey pattern spec: {hotkey} -> {pattern_name} after {charge_millis}ms for {repeat_millis}ms while in Fire Group {fire_group_idx+1}/{num_fire_groups}')
-            keyboard.add_hotkey(hotkey, lambda h=hotkey : play_secondary_fire(h))
+            add_new_hotkey_listener(hotkey, lambda h=hotkey : play_secondary_fire(h))
         
         #print('D) ', primary_fire_pattern_specs) #debug
         #print(f'D) current_fire_group_idx: {current_fire_group_idx}') #debug
         
     # Configure fire group control hotkeys
-    keyboard.add_hotkey(keys_for_actions['Next Fire Group'], lambda : update_fire_group(1))
-    keyboard.add_hotkey(keys_for_actions['Previous Fire Group'], lambda : update_fire_group(-1))
+    add_new_hotkey_listener(keys_for_actions['Next Fire Group'], lambda : update_fire_group(1))
+    add_new_hotkey_listener(keys_for_actions['Previous Fire Group'], lambda : update_fire_group(-1))
     
     run()
