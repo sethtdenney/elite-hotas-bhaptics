@@ -162,6 +162,7 @@ def run():
     os._exit(0)
 
 if __name__ == "__main__":
+    player.initialize()
     
     # Configure preset flight bindings as defined in Joystick Gremlin
     # Joystick inputs should leverage Map to Keyboard actions with a Virtual Button condition for [0.95,1.0] and [-1.0,-0.95] ranges respectively.
